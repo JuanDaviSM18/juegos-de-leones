@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza: Alien Hunter</title>
+    <style>
+        body { margin: 0; padding: 0; background: #0b0b16; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: monospace; color: white; overflow: hidden; }
+        h1 { margin: 5px; color: #ffcc00; text-shadow: 2px 2px #d35400; font-size: 24px; }
+        #hud { font-size: 16px; margin-bottom: 8px; font-weight: bold; background: rgba(0,0,0,0.6); padding: 6px 20px; border-radius: 5px; border: 1px solid #ffcc00; }
+        canvas { border: 4px solid #ffcc00; background: linear-gradient(to bottom, #0d0121, #1b023a); box-shadow: 0px 10px 30px rgba(0,0,0,0.8); }
+        .inst { margin-top: 8px; color: #bca0f0; font-size: 12px; text-align: center; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <h1>🦁 PIZZA: ALIEN HUNTER PRO 🪐</h1>
+    <div id="hud">HP: <span id="hp">❤️❤️❤️❤️❤️</span> | Aliens Restantes: <span id="aC">5</span> | Energía Súper: <span id="nrg">100%</span></div>
+    <canvas id="gC" width="900" height="500"></canvas>
+    <div class="inst">Moverse: A/D o Flechas | Doble Salto: W o Espacio (Dos veces) <br> **COMBOS:** [B] Voltereta Furia (Cerca) | [X] Bola de Fuego | [Z] Rayo Cósmico MÁXIMO (Requiere 100% Energía)</div>
+
+    <script>
+        const canvas = document.getElementById("gC"), ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        const hpEl = document.getElementById("hp"), aCEl = document.getElementById("aC"), nrgEl = document.getElementById("nrg");
+
+        const pizzaSprite = [
+            ['.', '.', 'R', 'R', 'R', 'R', '.', '.'],
+            ['.', 'R', 'R', 'D', 'D', 'R', 'R', '.'],
+            ['R', 'R', 'D', 'B', 'X', 'D', 'R', 'R'],
+            ['R', 'D', 'D', 'D', 'P', 'D', 'D', 'R'],
+            ['R', 'R', 'D', 'D', 'D', 'D', 'R', '.'],
+            ['.', 'R', 'R', 'R', 'R', 'R', 'R', '.'],
+            ['.', '.', 'D', 'D', '.', 'D', 'D', '.'],
+            ['.', '.', 'R', '.', '.', 'R', '.', '.']
+        ];
+        const pSz = 5;
+
+        const p = { x: 80, y: 300, w: 40, h: 40, vx: 0, vy: 0, sp: 7, jF: 11, g: false, jC: 0, f: "right", hp: 5, cd: 0, state: "idle", stTimer: 0, energy: 100 };
+        const pl = [
+            { x: 0, y: 460, w: 900, h: 40 }, { x: 100, y: 360, w: 160, h: 15 }, { x: 360, y: 280, w: 180, h: 15 },
+            { x: 150, y: 190, w: 140, h: 15 }, { x: 600, y: 220, w: 160, h: 15 }, { x: 680, y: 340, w: 140, h: 15 }
+        ];
+
+        let aliens = [
+            { x: 380, y: 250, w: 30, h: 30, mn: 360, mx: 510, sp: 2.5 },
+            { x: 120, y: 330, w: 30, h: 30, mn: 100, mx: 230, sp: 3 },
+            { x: 620, y: 190, w: 30, h: 30, mn: 600, mx: 730, sp: 2 },
+            { x: 200, y: 430, w: 30, h: 30, mn: 50, mx: 400, sp: 4 },
+            { x: 500, y: 430, w: 30, h: 30, mn: 450, mx: 800, sp: 3.5 }
+        ];
+
+        let fbs =, lasers =, parts =, k = {};
+        let won = false, go = false, bOk = true, xOk = true, zOk = true;
+        window.addEventListener("keydown", e => {
+            k[e.key] = true;
+            if (go && e.key === "Enter") reset();
+            if (won && e.key === "Enter") reset();
+            
+            if ((e.key === "w" || e.key === "W" || e.key === "ArrowUp" || e.key === " ") && p.jC < 2 && !go && !won) {
+                p.vy = -p.jF; p.g = false; p.jC++;
+            }
+            if ((e.key === "b" || e.key === "B") && bOk && p.state === "idle" && !go && !won) {
+                p.state = "spin"; p.stTimer = 25; bOk = false;
+            }
+            if ((e.key === "x" || e.key === "X") && xOk && !go && !won) {
+                fbs.push({ x: p.f === "right" ? p.x + p.w : p.x - 15, y: p.y + p.h/2 - 4, w: 16, h: 10, vx: p.f === "right" ? 14 : -14 });
+                xOk = false;
+            }
+            if ((e.key === "z" || e.key === "Z") && zOk && p.energy >= 100 && !go && !won) {
+                p.state = "laser"; p.stTimer = 40; p.energy = 0; zOk = false;
+                lasers.push({ x: p.f === "right" ? p.x + p.w : 0, y: p.y, w: p.f === "right" ? canvas.width - (p.x + p.w) : p.x, h: p.h });
+                nrgEl.innerText = "0%";
+            }
+        });
+
+        window.addEventListener("keyup", e => {
+            k[e.key] = false;
+            if (e.key === "b" || e.key === "B") bOk = true;
+            if (e.key === "x" || e.key === "X") xOk = true;
+            if (e.key === "z" || e.key === "Z") zOk = true;
+        });
+
+        function reset() {
+            p.x = 80; p.y = 300; p.vx = 0; p.vy = 0; p.hp = 5; p.cd = 0; p.energy = 100; p.state = "idle";
+            aliens = [
+                { x: 380, y: 250, w: 30, h: 30, mn: 360, mx: 510, sp: 2.5 },
+                { x: 120, y: 330, w: 30, h: 30, mn: 100, mx: 230, sp: 3 },
+                { x: 620, y: 190, w: 30, h: 30, mn: 600, mx: 730, sp: 2 },
+                { x: 200, y: 430, w: 30, h: 30, mn: 50, mx: 400, sp: 4 },
+                { x: 500, y: 430, w: 30, h: 30, mn: 450, mx: 800, sp: 3.5 }
+            ];
+            fbs =; lasers =; parts =; won = false; go = false;
+            hpEl.innerText = "❤️❤️❤️❤️❤️"; aCEl.innerText = "5"; nrgEl.innerText = "100%"; u();
+        }
+
+        function boom(x, y, color) {
+            for(let i=0; i<12; i++) parts.push({ x: x, y: y, vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*8, r: Math.random()*4+2, t: 20, col: color });
+        }
+        function u() {
+            if (won || go) return;
+            if (p.cd > 0) p.cd--;
+            if (p.energy < 100 && p.state !== "laser") { p.energy += 0.25; if(p.energy > 100) p.energy = 100; nrgEl.innerText = Math.floor(p.energy) + "%"; }
+            if (p.stTimer > 0) { p.stTimer--; if(p.stTimer === 0) p.state = "idle"; }
+
+            if (k["ArrowRight"] || k["d"] || k["D"]) { p.vx = p.sp; p.f = "right"; }
+            else if (k["ArrowLeft"] || k["a"] || k["A"]) { p.vx = -p.sp; p.f = "left"; }
+            else p.vx *= 0.8;
+
+            p.vy += 0.55; p.x += p.vx; p.y += p.vy;
+            if (p.x < 0) p.x = 0; if (p.x + p.w > canvas.width) p.x = canvas.width - p.w;
+
+            for (let pt of pl) {
+                if (p.x < pt.x + pt.w && p.x + p.w > pt.x && p.y < pt.y + pt.h && p.y + p.h > pt.y) {
+                    if (p.vy > 0 && (p.y + p.h - p.vy) <= pt.y) { p.y = pt.y - p.h; p.vy = 0; p.g = true; p.jC = 0; }
+                }
+            }
+
+            for (let i = fbs.length - 1; i >= 0; i--) {
+                fbs[i].x += fbs[i].vx;
+                if (fbs[i].x < 0 || fbs[i].x > canvas.width) { fbs.splice(i, 1); continue; }
+                for (let j = aliens.length - 1; j >= 0; j--) {
+                    if (fbs[i] && fbs[i].x < aliens[j].x + aliens[j].w && fbs[i].x + fbs[i].w > aliens[j].x && fbs[i].y < aliens[j].y + aliens[j].h && fbs[i].y + fbs[i].h > aliens[j].y) {
+                        boom(aliens[j].x+15, aliens[j].y+15, "#00ffcc"); aliens.splice(j, 1); fbs.splice(i, 1); aCEl.innerText = aliens.length; break;
+                    }
+                }
+            }
+
+            if (p.state === "laser" && lasers.length > 0) {
+                let l = lasers; l.y = p.y;
+                for (let j = aliens.length - 1; j >= 0; j--) {
+                    if (aliens[j].x + aliens[j].w > l.x && aliens[j].x < l.x + l.w && aliens[j].y + aliens[j].h > l.y && aliens[j].y < l.y + l.h) {
+                        boom(aliens[j].x+15, aliens[j].y+15, "#ff00ff"); aliens.splice(j, 1); aCEl.innerText = aliens.length;
+                    }
+                }
+            } else { lasers =; }
+
+            for (let j = aliens.length - 1; j >= 0; j--) {
+                let e = aliens[j]; e.x += e.sp; if (e.x <= e.mn || e.x + e.w >= e.mx) e.sp *= -1;
+                if (p.x < e.x + e.w && p.x + p.w > e.x && p.y < e.y + e.h && p.y + p.h > e.y) {
+                    if (p.state === "spin") { boom(e.x+15, e.y+15, "#00ffcc"); aliens.splice(j, 1); aCEl.innerText = aliens.length; }
+                    else if (p.cd === 0) {
+                        p.hp--; p.cd = 50; p.vx = e.sp > 0 ? 12 : -12; p.vy = -5;
+                        hpEl.innerText = "❤️".repeat(p.hp) || "💀"; if (p.hp <= 0) go = true;
+                    }
+                }
+            }
+
+            for(let i = parts.length - 1; i >= 0; i--) { parts[i].x += parts[i].vx; parts[i].y += parts[i].vy; parts[i].t--; if(parts[i].t <= 0) parts.splice(i, 1); }
+            if (aliens.length === 0) won = true;
+            d(); requestAnimationFrame(u);
+        }
+
+        function d() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let pt of pl) { ctx.fillStyle = "#120a2a"; ctx.fillRect(pt.x, pt.y, pt.w, pt.h); ctx.fillStyle = "#00ffcc"; ctx.fillRect(pt.x, pt.y, pt.w, 3); }
+            for(let pt of parts) { ctx.fillStyle = pt.col; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI*2); ctx.fill(); }
+            for (let f of fbs) { ctx.fillStyle = "#ff6600"; ctx.fillRect(f.x, f.y, f.w, f.h); ctx.fillStyle = "#ffff00"; ctx.fillRect(f.x+4, f.y+2, f.w-8, f.h-4); }
+            for (let l of lasers) { ctx.fillStyle = "rgba(0, 255, 204, 0.3)"; ctx.fillRect(l.x, l.y-5, l.w, l.h+10); ctx.fillStyle = "#ffffff"; ctx.fillRect(l.x, l.y+4, l.w, l.h-8); }
+            
+            for (let e of aliens) {
+                ctx.fillStyle = "#00ffcc"; ctx.fillRect(e.x+6, e.y, 18, 18);
+                ctx.fillStyle = "#ff00ff"; ctx.fillRect(e.x+10, e.y+6, 4, 4); ctx.fillRect(e.x+16, e.y+6, 4, 4);
+                ctx.fillStyle = "#00ccaa"; ctx.fillRect(e.x+4, e.y+18, 4, 10); ctx.fillRect(e.x+13, e.y+18, 4, 10); ctx.fillRect(e.x+22, e.y+18, 4, 10);
+            }
+
+            if (p.cd % 10 < 5) {
+                ctx.save(); ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+                if (p.state === "spin") { ctx.rotate(Date.now() * 0.02); ctx.fillStyle = "rgba(255, 68, 0, 0.5)"; ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI*2); ctx.fill(); }
+                else if (p.f === "left") { ctx.scale(-1, 1); }
+                for (let r = 0; r < pizzaSprite.length; r++) {
+                    for (let c = 0; c < pizzaSprite[r].length; c++) {
+                        const t = pizzaSprite[r][c]; if (t === '.') continue;
+                        ctx.fillStyle = t === 'R' ? "#ff2200" : t === 'D' ? "#f1c40f" : t === 'B' ? "#ffffff" : "#000000";
+                        ctx.fillRect((c - 4) * pSz, (r - 4) * pSz, pSz, pSz);
+                    }
+                }
+                ctx.restore();
+            }
+
+            if (won || go) {
+                ctx.fillStyle = "rgba(10, 5, 25, 0.9)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.textAlign = "center";
+                if (won) { ctx.fillStyle = "#00ffcc"; ctx.font = "28px monospace"; ctx.fillText("¡ALIENS ANIQUILADOS!", canvas.width / 2, canvas.height / 2 - 10); ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.fillText("Pizza salvó la galaxia. Presiona 'Enter' para reiniciar", canvas.width / 2, canvas.height / 2 + 30); }
+                else { ctx.fillStyle = "#ff2200"; ctx.font = "32px monospace"; ctx.fillText("¡PIZZA HA CAÍDO!", canvas.width / 2, canvas.height / 2 - 10); ctx.fillStyle = "#fff"; ctx.font = "16px monospace"; ctx.fillText("Presiona 'Enter' para volver a intentar.", canvas.width / 2, canvas.height / 2 + 30); }
+            }
+        }
+        u();
+    </script>
+</body>
+</html>
