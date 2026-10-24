@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Juego embebido</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b 40%, #0f766e);
+      color: white;
+    }
+
+    .game-panel {
+      width: min(1200px, 100%);
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+      backdrop-filter: blur(8px);
+    }
+
+    .game-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .game-title {
+      margin: 0;
+      font-size: clamp(1.2rem, 2vw, 2rem);
+      font-weight: 700;
+    }
+
+    .play-btn {
+      border: none;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 14px 22px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 12px 25px rgba(34, 197, 94, 0.35);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .play-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 30px rgba(34, 197, 94, 0.45);
+    }
+
+    .play-btn:disabled {
+      cursor: default;
+      opacity: 0.8;
+    }
+
+    .game-frame-wrap {
+      position: relative;
+      width: 100%;
+      height: 0;
+      overflow: hidden;
+      border-radius: 18px;
+      background: rgba(0,0,0,0.45);
+      transition: height 0.4s ease, opacity 0.4s ease, margin 0.4s ease;
+      opacity: 0;
+      margin-top: 0;
+    }
+
+    .game-frame-wrap.open {
+      height: min(75vh, 760px);
+      opacity: 1;
+      margin-top: 16px;
+    }
+
+    .game-iframe {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border: 0;
+      background: #000;
+    }
+
+    .spinner {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.58);
+      z-index: 2;
+      transition: opacity 0.3s ease;
+    }
+
+    .spinner.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner-ring {
+      width: 52px;
+      height: 52px;
+      border: 5px solid rgba(255,255,255,0.25);
+      border-top-color: #7dd3fc;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .fallback {
+      display: none;
+      margin-top: 16px;
+      padding: 22px;
+      text-align: center;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .fallback p {
+      margin: 0 0 14px;
+      font-size: 1rem;
+    }
+
+    .fallback a {
+      display: inline-block;
+      text-decoration: none;
+      background: #f59e0b;
+      color: #111827;
+      font-weight: 700;
+      padding: 12px 18px;
+      border-radius: 999px;
+    }
+
+    @media (max-width: 640px) {
+      .game-panel { padding: 14px; }
+      .game-header { align-items: stretch; }
+      .play-btn { width: 100%; }
+      .game-frame-wrap.open { height: 62vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-panel">
+    <div class="game-header">
+      <h2 class="game-title">Minecraft Classic</h2>
+      <button class="play-btn" id="playBtn">Jugar ahora</button>
+    </div>
+
+    <div class="game-frame-wrap" id="gameWrap">
+      <div class="spinner" id="spinner">
+        <div class="spinner-ring"></div>
+      </div>
+
+      <iframe
+        id="gameFrame"
+        class="game-iframe"
+        src=""
+        title="Juego embebido"
+        allowfullscreen
+        loading="lazy">
+      </iframe>
+    </div>
+
+    <div class="fallback" id="fallback">
+      <p>Este juego no se puede cargar aquí.</p>
+      <a href="https://classic.minecraft.net/" target="_blank" rel="noopener noreferrer">
+        Abrir en nueva pestaña
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const playBtn = document.getElementById('playBtn');
+    const gameWrap = document.getElementById('gameWrap');
+    const spinner = document.getElementById('spinner');
+    const gameFrame = document.getElementById('gameFrame');
+    const fallback = document.getElementById('fallback');
+    const gameUrl = 'https://classic.minecraft.net/';
+
+    playBtn.addEventListener('click', () => {
+      gameFrame.src = gameUrl;
+      gameWrap.classList.add('open');
+      playBtn.textContent = 'Juego abierto';
+      playBtn.disabled = true;
+    });
+
+    gameFrame.addEventListener('load', () => {
+      try {
+        const doc = gameFrame.contentDocument || gameFrame.contentWindow?.document;
+        if (doc && doc.body && doc.body.innerHTML !== '') {
+          spinner.classList.add('hidden');
+          return;
+        }
+      } catch (e) {}
+
+      // El iframe está bloqueado o la página no se puede leer
+      showFallback();
+    });
+
+    function showFallback() {
+      gameWrap.style.display = 'none';
+      fallback.style.display = 'block';
+      playBtn.disabled = true;
+      playBtn.textContent = 'No disponible aquí';
+    }
+  </script>
+</body>
+</html>
