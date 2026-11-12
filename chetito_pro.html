@@ -5,160 +5,184 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chetito Pro: Fireball Edition</title>
     <style>
-        body { margin: 0; padding: 0; background-color: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Courier New', Courier, monospace; color: white; overflow: hidden; }
-        h1 { margin: 5px; color: #ff6700; text-shadow: 2px 2px #000; font-size: 26px; }
-        #hud { font-size: 16px; margin-bottom: 8px; font-weight: bold; background: rgba(0,0,0,0.4); padding: 5px 15px; border-radius: 5px; }
-        canvas { border: 4px solid #161625; background: linear-gradient(to bottom, #111e36, #22355c); box-shadow: 0px 10px 30px rgba(0,0,0,0.7); }
-        .instructions { margin-top: 8px; color: #a2a2d0; font-size: 13px; text-align: center; line-height: 1.4; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; padding: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a2e; color: #fff; font-family: 'Courier New', monospace; }
+        h1 { margin: 4px 0 10px; color: #ff8500; text-align: center; text-shadow: 2px 2px #000; font-size: clamp(20px, 5vw, 28px); }
+        #hud { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin-bottom: 8px; padding: 8px 14px; border-radius: 6px; background: #0c0c1dbb; font-weight: bold; text-align: center; }
+        #hud span { color: #ffd166; }
+        canvas { display: block; width: min(850px, 95vw); height: auto; border: 4px solid #161625; background: linear-gradient(#111e36, #22355c); box-shadow: 0 10px 30px #000b; image-rendering: pixelated; }
+        .instructions { max-width: 850px; margin-top: 9px; color: #c2c2e0; font-size: 13px; line-height: 1.6; text-align: center; }
+        button { margin: 8px 4px 0; padding: 8px 14px; border: 1px solid #ff8500; border-radius: 5px; background: #282848; color: #fff; font: bold 14px 'Courier New', monospace; cursor: pointer; }
+        button:hover { background: #41416b; }
     </style>
 </head>
 <body>
     <h1>🦁 Chetito Pro: Fireball Edition 🔥</h1>
-    <div id="hud">Panecillos: <span id="mCount">0</span>/10 | Enemigos: <span id="eCount">3</span> | Puerta: <span id="dStat" style="color: #ff4757;">CERRADA</span></div>
-    <canvas id="gameCanvas" width="850" height="500"></canvas>
-    <div class="instructions">
-        <strong>CONTROLES:</strong> Flechas o A/D para moverte | Flecha Arriba, W o Espacio para Saltar<br>
-        🔥 <strong>ATACAR:</strong> Presiona la tecla <strong>X</strong> o <strong>J</strong> para lanzar bolas de fuego.
+    <div id="hud">
+        <div>Nivel: <span id="level">1</span>/<span id="levelTotal">3</span></div>
+        <div>Panecillos: <span id="mCount">0</span>/<span id="mTotal">10</span></div>
+        <div>Enemigos: <span id="eCount">0</span></div>
+        <div>Vidas: <span id="lCount">3</span></div>
+        <div>Puerta: <span id="dStat">CERRADA</span></div>
     </div>
-    <script>
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        ctx.imageSmoothingEnabled = false;
-        const mCountEl = document.getElementById("mCount");
-        const eCountEl = document.getElementById("eCount");
-        const dStatEl = document.getElementById("dStat");
+    <canvas id="gameCanvas" width="850" height="500" aria-label="Juego de plataformas Chetito Pro"></canvas>
+    <div class="instructions">
+        <strong>MOVERSE:</strong> Flechas o A/D &nbsp;|&nbsp; <strong>SALTAR:</strong> ↑, W o Espacio<br>
+        🔥 <strong>ATACAR:</strong> X o J &nbsp;|&nbsp; <strong>PAUSAR:</strong> P o Esc &nbsp;|&nbsp; <strong>REINICIAR NIVEL:</strong> R
+        <div><button id="pauseBtn" type="button">Pausar</button><button id="restartBtn" type="button">Reiniciar nivel</button></div>
+    </div>
+<script>
+(() => {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    const ui = {
+        level: document.getElementById('level'), levelTotal: document.getElementById('levelTotal'),
+        muffins: document.getElementById('mCount'), muffinTotal: document.getElementById('mTotal'),
+        enemies: document.getElementById('eCount'), lives: document.getElementById('lCount'),
+        door: document.getElementById('dStat'), pause: document.getElementById('pauseBtn')
+    };
+    const W = canvas.width, H = canvas.height, GRAVITY = 0.62, MAX_LIVES = 3;
+    const sprite = [
+        ['.','N','N','N','N','.','.','.'], ['N','N','D','D','N','N','.','.'],
+        ['N','D','B','X','D','N','N','.'], ['N','D','D','R','D','D','N','.'],
+        ['.','N','D','D','D','D','N','.'], ['.','N','N','N','N','N','N','.'],
+        ['.','.','D','D','.','D','D','.'], ['.','.','N','.','.','N','.','.']
+    ];
+    const levels = [
+        { name: 'Pradera de los panecillos', start: [45, 400], door: [790, 370], platforms: [[0,450,850,50],[120,350,140,20],[350,260,160,20],[90,190,130,20],[570,210,150,20],[700,330,100,20]], muffins: [[190,310],[120,150],[180,150],[380,220],[450,220],[600,170],[670,170],[750,290],[50,410],[520,410]], enemies: [[360,235,350,485,1.5],[130,325,120,235,2],[580,185,570,695,1.8]] },
+        { name: 'Cavernas ardientes', start: [35, 400], door: [790, 370], platforms: [[0,450,850,50],[90,365,130,18],[280,300,150,18],[500,350,130,18],[660,280,130,18],[100,205,130,18],[350,175,145,18],[590,140,150,18]], muffins: [[120,325],[185,325],[315,260],[390,260],[535,310],[590,310],[700,240],[750,240],[390,135],[650,100]], enemies: [[300,275,280,410,1.8],[680,255,660,770,2],[365,150,350,470,1.6]] },
+        { name: 'Cielo de leones', start: [35, 400], door: [790, 370], platforms: [[0,450,850,50],[100,365,120,18],[270,300,120,18],[440,235,120,18],[610,300,120,18],[730,365,90,18],[90,190,120,18],[300,140,120,18],[520,175,120,18],[700,115,100,18]], muffins: [[120,325],[180,325],[300,260],[355,260],[470,195],[525,135],[650,260],[750,325],[340,100],[740,75]], enemies: [[110,340,100,205,1.8],[285,275,270,375,2],[625,275,610,715,2],[710,90,700,780,1.5]] }
+    ];
+    ui.levelTotal.textContent = levels.length;
+    const player = { x: 0, y: 0, w: 40, h: 40, vx: 0, vy: 0, speed: 5.2, jump: 12.5, grounded: false, facing: 1, invulnerable: 0 };
+    let levelIndex = 0, platforms = [], muffins = [], enemies = [], fireballs = [], door = null;
+    let score = 0, lives = MAX_LIVES, mode = 'playing', shootCooldown = 0;
+    const keys = Object.create(null);
+    const overlaps = (a,b) => a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
 
-        const chetitoSprite = [
-            ['.', 'N', 'N', 'N', 'N', '.', '.', '.'],
-            ['N', 'N', 'D', 'D', 'N', 'N', '.', '.'],
-            ['N', 'D', 'B', 'X', 'D', 'N', 'N', '.'],
-            ['N', 'D', 'D', 'R', 'D', 'D', 'N', '.'],
-            ['.', 'N', 'D', 'D', 'D', 'D', 'N', '.'],
-            ['.', 'N', 'N', 'N', 'N', 'N', 'N', '.'],
-            ['.', '.', 'D', 'D', '.', 'D', 'D', '.'],
-            ['.', '.', 'N', '.', '.', 'N', '.', '.']
-        ];
-        const pixelSize = 5; 
-        const player = { x: 60, y: 300, width: 40, height: 40, vx: 0, vy: 0, speed: 5.5, jumpForce: 12.5, grounded: false, facing: "right" };
-        const gravity = 0.6;
-        const friction = 0.85;
+    function loadLevel(index) {
+        const data = levels[index]; levelIndex = index;
+        platforms = data.platforms.map(([x,y,w,h]) => ({x,y,w,h}));
+        muffins = data.muffins.map(([x,y]) => ({x,y,r:10,collected:false}));
+        enemies = data.enemies.map(([x,y,minX,maxX,speed]) => ({x,y,w:25,h:25,minX,maxX,speed,initialSpeed:speed}));
+        fireballs = []; door = {x:data.door[0],y:data.door[1],w:45,h:80};
+        player.x = data.start[0]; player.y = data.start[1]; player.vx = 0; player.vy = 0; player.grounded = false; player.invulnerable = 0;
+        score = 0; mode = 'playing'; updateHud();
+    }
+    function updateHud() {
+        ui.level.textContent = levelIndex + 1; ui.muffins.textContent = score;
+        ui.muffinTotal.textContent = muffins.length; ui.enemies.textContent = enemies.length;
+        ui.lives.textContent = lives;
+        const open = score === muffins.length;
+        ui.door.textContent = open ? '¡ABIERTA!' : 'CERRADA'; ui.door.style.color = open ? '#2ecc71' : '#ff6b81';
+        ui.pause.textContent = mode === 'paused' ? 'Continuar' : 'Pausar';
+    }
+    function resetLevel() { loadLevel(levelIndex); }
+    function takeHit() {
+        if (player.invulnerable > 0) return;
+        lives--; updateHud();
+        if (lives <= 0) { mode = 'gameover'; return; }
+        const start = levels[levelIndex].start;
+        player.x = start[0]; player.y = start[1]; player.vx = 0; player.vy = 0; player.invulnerable = 100;
+    }
+    function shoot() {
+        if (mode !== 'playing' || shootCooldown > 0) return;
+        fireballs.push({x: player.facing > 0 ? player.x+player.w : player.x-14, y:player.y+17, w:14,h:9,vx:player.facing*9});
+        shootCooldown = 18;
+    }
+    window.addEventListener('keydown', e => {
+        const key = e.key.toLowerCase();
+        if (['arrowleft','arrowright','arrowup',' ','arrowdown'].includes(key)) e.preventDefault();
+        keys[key] = true;
+        if (e.repeat) return;
+        if (key === 'p' || key === 'escape') { if (mode === 'playing') mode = 'paused'; else if (mode === 'paused') mode = 'playing'; updateHud(); }
+        if (key === 'r') resetLevel();
+        if (key === 'x' || key === 'j') shoot();
+        if ((key === 'enter' || key === ' ') && mode === 'gameover') { lives = MAX_LIVES; loadLevel(0); }
+        if ((key === 'enter' || key === ' ') && mode === 'levelcomplete') { if (levelIndex < levels.length-1) loadLevel(levelIndex+1); else { lives=MAX_LIVES; loadLevel(0); } }
+    });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    window.addEventListener('blur', () => { if (mode === 'playing') { mode='paused'; updateHud(); } });
+    document.getElementById('pauseBtn').addEventListener('click', () => { if (mode==='playing') mode='paused'; else if (mode==='paused') mode='playing'; updateHud(); });
+    document.getElementById('restartBtn').addEventListener('click', resetLevel);
 
-        const platforms = [
-            { x: 0, y: 450, width: 850, height: 50 },
-            { x: 120, y: 350, width: 140, height: 20 },
-            { x: 350, y: 260, width: 160, height: 20 },
-            { x: 90, y: 190, width: 130, height: 20 },
-            { x: 570, y: 210, width: 150, height: 20 },
-            { x: 700, y: 330, width: 100, height: 20 }
-        ];
-        const muffins = [
-            { x: 190, y: 310, r: 10, collected: false }, { x: 120, y: 150, r: 10, collected: false },
-            { x: 180, y: 150, r: 10, collected: false }, { x: 380, y: 220, r: 10, collected: false },
-            { x: 450, y: 220, r: 10, collected: false }, { x: 600, y: 170, r: 10, collected: false },
-            { x: 670, y: 170, r: 10, collected: false }, { x: 750, y: 290, r: 10, collected: false },
-            { x: 50, y: 410, r: 10, collected: false }, { x: 520, y: 410, r: 10, collected: false }
-        ];
-        let enemies = [
-            { x: 360, y: 235, width: 25, height: 25, minX: 350, maxX: 485, speed: 1.5 },
-            { x: 130, y: 325, width: 25, height: 25, minX: 120, maxX: 235, speed: 2 },
-            { x: 580, y: 185, width: 25, height: 25, minX: 570, maxX: 695, speed: 1.8 }
-        ];
-        let fireballs = [];
-        const door = { x: 780, y: 370, width: 45, height: 80, open: false };
-        let score = 0; let gameWon = false; let canShoot = true; const keys = {};
-              window.addEventListener("keydown", e => {
-            keys[e.key] = true;
-            if ((e.key === "x" || e.key === "X" || e.key === "j" || e.key === "J") && canShoot && !gameWon) { shootFireball(); canShoot = false; }
-        });
-        window.addEventListener("keyup", e => { keys[e.key] = false; if (e.key === "x" || e.key === "X" || e.key === "j" || e.key === "J") canShoot = true; });
-
-        function shootFireball() {
-            let fvx = player.facing === "right" ? 10 : -10;
-            fireballs.push({ x: player.facing === "right" ? player.x + player.width : player.x, y: player.y + player.height / 2 - 4, width: 14, height: 8, vx: fvx });
+    function update() {
+        if (mode !== 'playing') return;
+        if (shootCooldown > 0) shootCooldown--;
+        if (player.invulnerable > 0) player.invulnerable--;
+        const left = keys.arrowleft || keys.a, right = keys.arrowright || keys.d;
+        if (left !== right) { player.vx = left ? -player.speed : player.speed; player.facing = left ? -1 : 1; }
+        else player.vx *= 0.78;
+        if ((keys.arrowup || keys.w || keys[' ']) && player.grounded) { player.vy = -player.jump; player.grounded = false; }
+        // Resolve horizontal collisions first, including platform sides.
+        player.x += player.vx;
+        for (const p of platforms) if (overlaps(player,{x:p.x,y:p.y,w:p.w,h:p.h})) {
+            if (player.vx > 0) player.x = p.x-player.w; else if (player.vx < 0) player.x = p.x+p.w;
+            player.vx = 0;
         }
-
-        function update() {
-            if (gameWon) return;
-            if (keys["ArrowRight"] || keys["d"] || keys["D"]) { player.vx = player.speed; player.facing = "right"; }
-            else if (keys["ArrowLeft"] || keys["a"] || keys["A"]) { player.vx = -player.speed; player.facing = "left"; }
-            else { player.vx *= friction; }
-
-            if ((keys["ArrowUp"] || keys["w"] || keys["W"] || keys[" "]) && player.grounded) { player.vy = -player.jumpForce; player.grounded = false; }
-            player.vy += gravity; player.x += player.vx; player.y += player.vy;
-            if (player.x < 0) player.x = 0;
-            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
-
-            player.grounded = false;
-            for (let plat of platforms) {
-                if (player.x < plat.x + plat.width && player.x + player.width > plat.x && player.y < plat.y + plat.height && player.y + player.height > plat.y) {
-                    if (player.vy > 0 && (player.y + player.height - player.vy) <= plat.y) { player.y = plat.y - player.height; player.vy = 0; player.grounded = true; }
-                }
-            }
-
-            for (let i = fireballs.length - 1; i >= 0; i--) {
-                let f = fireballs[i]; f.x += f.vx;
-                if (f.x < 0 || f.x > canvas.width) { fireballs.splice(i, 1); continue; }
-                for (let j = enemies.length - 1; j >= 0; j--) {
-                    let en = enemies[j];
-                    if (f.x < en.x + en.width && f.x + f.width > en.x && f.y < en.y + en.height && f.y + f.height > en.y) { enemies.splice(j, 1); fireballs.splice(i, 1); eCountEl.innerText = enemies.length; break; }
-                }
-            }
-
-            for (let en of enemies) {
-                en.x += en.speed; if (en.x <= en.minX || en.x + en.width >= en.maxX) { en.speed *= -1; }
-                if (player.x < en.x + en.width && player.x + player.width > en.x && player.y < en.y + en.height && player.y + player.height > en.y) { player.vx = en.speed > 0 ? 8 : -8; player.vy = -4; }
-            }
-
-            for (let m of muffins) {
-                if (!m.collected) {
-                    if (player.x < m.x + m.r && player.x + player.width > m.x - m.r && player.y < m.y + m.r && player.y + player.height > m.y - m.r) {
-                        m.collected = true; score++; mCountEl.innerText = score;
-                        if (score === 10) { door.open = true; dStatEl.innerText = "¡ABIERTA!"; dStatEl.style.color = "#2ecc71"; }
-                    }
-                }
-            }
-
-            if (door.open && player.x < door.x + door.width && player.x + player.width > door.x && player.y < door.y + door.height && player.y + player.height > door.y) { gameWon = true; }
-            draw(); requestAnimationFrame(update);
+        player.x = Math.max(0, Math.min(W-player.w, player.x));
+        // Then resolve vertical collisions from above and below.
+        player.vy += GRAVITY; const oldY = player.y; player.y += player.vy; player.grounded = false;
+        for (const p of platforms) if (overlaps(player,{x:p.x,y:p.y,w:p.w,h:p.h})) {
+            if (player.vy > 0 && oldY+player.h <= p.y+2) { player.y=p.y-player.h; player.vy=0; player.grounded=true; }
+            else if (player.vy < 0 && oldY >= p.y+p.h-2) { player.y=p.y+p.h; player.vy=0; }
         }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let plat of platforms) { ctx.fillStyle = "#2c2c54"; ctx.fillRect(plat.x, plat.y, plat.width, plat.height); ctx.fillStyle = "#ff6700"; ctx.fillRect(plat.x, plat.y, plat.width, 4); }
-            for (let m of muffins) {
-                if (!m.collected) {
-                    ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2); ctx.fillStyle = "#e67e22"; ctx.fill(); ctx.closePath();
-                    ctx.beginPath(); ctx.arc(m.x, m.y - 2, m.r * 0.7, Math.PI, 0); ctx.fillStyle = "#ff78ae"; ctx.fill(); ctx.closePath();
-                }
-            }
-            for (let en of enemies) {
-                ctx.fillStyle = "#482ff7"; ctx.fillRect(en.x, en.y, en.width, en.height); ctx.fillStyle = "#ff0055"; ctx.fillRect(en.speed > 0 ? en.x + 16 : en.x + 4, en.y + 6, 6, 6);
-                ctx.fillStyle = "#1e1e30"; ctx.fillRect(en.x + 4, en.y + en.height - 4, 6, 4); ctx.fillRect(en.x + 15, en.y + en.height - 4, 6, 4);
-            }
-            for (let f of fireballs) { ctx.fillStyle = "#ff3f34"; ctx.fillRect(f.x, f.y, f.width, f.height); ctx.fillStyle = "#ffca28"; ctx.fillRect(f.vx > 0 ? f.x + 4 : f.x, f.y + 2, f.width - 4, f.height - 4); }
-            ctx.fillStyle = door.open ? "#2ecc71" : "#ff4757"; ctx.fillRect(door.x, door.y, door.width, door.height); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 3; ctx.strokeRect(door.x, door.y, door.width, door.height);
-
-            ctx.save();
-            if (player.facing === "left") { ctx.translate(player.x + player.width, player.y); ctx.scale(-1, 1); } else { ctx.translate(player.x, player.y); }
-            for (let row = 0; row < chetitoSprite.length; row++) {
-                for (let col = 0; col < chetitoSprite[row].length; col++) {
-                    const pixelType = chetitoSprite[row][col]; if (pixelType === '.') continue;
-                    if (pixelType === 'N') ctx.fillStyle = "#ff6700";
-                    else if (pixelType === 'D') ctx.fillStyle = "#f1c40f";
-                    else if (pixelType === 'B') ctx.fillStyle = "#ffffff";
-                    else if (pixelType === 'X') ctx.fillStyle = "#000000";
-                    else if (pixelType === 'R') ctx.fillStyle = "#e84393";
-                    ctx.fillRect(col * pixelSize, row * pixelSize, pixelSize, pixelSize);
-                }
+        if (player.y > H+80) takeHit();
+        // Fireballs hit enemies and leave the playfield cleanly.
+        for (let i=fireballs.length-1;i>=0;i--) {
+            const f=fireballs[i]; f.x+=f.vx;
+            if (f.x>W || f.x+f.w<0) { fireballs.splice(i,1); continue; }
+            const hit=enemies.findIndex(en=>overlaps(f,{x:en.x,y:en.y,w:en.w,h:en.h}));
+            if (hit>=0) { enemies.splice(hit,1); fireballs.splice(i,1); }
+        }
+        for (const en of enemies) {
+            en.x += en.speed;
+            if (en.x <= en.minX) { en.x=en.minX; en.speed=Math.abs(en.initialSpeed); }
+            if (en.x+en.w >= en.maxX) { en.x=en.maxX-en.w; en.speed=-Math.abs(en.initialSpeed); }
+            if (overlaps(player,{x:en.x,y:en.y,w:en.w,h:en.h})) takeHit();
+        }
+        for (const m of muffins) if (!m.collected && overlaps(player,{x:m.x-m.r,y:m.y-m.r,w:m.r*2,h:m.r*2})) { m.collected=true; score++; }
+        if (score === muffins.length && overlaps(player,door)) mode='levelcomplete';
+        updateHud();
+    }
+    function draw() {
+        ctx.clearRect(0,0,W,H);
+        // Small decorative stars
+        ctx.fillStyle='#ffffff55'; for (const [x,y] of [[48,55],[220,80],[330,45],[520,70],[760,48],[815,125],[270,125]]) ctx.fillRect(x,y,3,3);
+        for (const p of platforms) { ctx.fillStyle='#34345f'; ctx.fillRect(p.x,p.y,p.w,p.h); ctx.fillStyle='#ff8500'; ctx.fillRect(p.x,p.y,p.w,4); }
+        for (const m of muffins) if (!m.collected) {
+            ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,Math.PI*2); ctx.fillStyle='#e67e22'; ctx.fill();
+            ctx.beginPath(); ctx.arc(m.x,m.y-2,m.r*.7,Math.PI,0); ctx.fillStyle='#ff78ae'; ctx.fill();
+        }
+        for (const en of enemies) { ctx.fillStyle='#6246ea'; ctx.fillRect(en.x,en.y,en.w,en.h); ctx.fillStyle='#ff0055'; ctx.fillRect(en.speed>0?en.x+16:en.x+4,en.y+6,6,6); ctx.fillStyle='#1e1e30'; ctx.fillRect(en.x+4,en.y+en.h-4,6,4); ctx.fillRect(en.x+15,en.y+en.h-4,6,4); }
+        for (const f of fireballs) { ctx.fillStyle='#ff3f34'; ctx.fillRect(f.x,f.y,f.w,f.h); ctx.fillStyle='#ffca28'; ctx.fillRect(f.x+4,f.y+2,f.w-6,5); }
+        ctx.fillStyle=score===muffins.length?'#2ecc71':'#ff4757'; ctx.fillRect(door.x,door.y,door.w,door.h); ctx.strokeStyle='#fff'; ctx.lineWidth=3; ctx.strokeRect(door.x,door.y,door.w,door.h);
+        ctx.fillStyle='#fff'; ctx.fillRect(door.x+9,door.y+12,5,5);
+        if (player.invulnerable===0 || Math.floor(player.invulnerable/7)%2===0) {
+            ctx.save(); if (player.facing<0) { ctx.translate(player.x+player.w,player.y); ctx.scale(-1,1); } else ctx.translate(player.x,player.y);
+            for(let row=0;row<sprite.length;row++) for(let col=0;col<sprite[row].length;col++) {
+                const pixel=sprite[row][col]; if(pixel==='.') continue;
+                ctx.fillStyle=({N:'#ff6700',D:'#f1c40f',B:'#fff',X:'#000',R:'#e84393'})[pixel]; ctx.fillRect(col*5,row*5,5,5);
             }
             ctx.restore();
-
-            if (gameWon) {
-                ctx.fillStyle = "rgba(10, 10, 30, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#ff6700"; ctx.font = "32px 'Courier New'"; ctx.textAlign = "center";
-                ctx.fillText("¡NIVEL COMPLETADO PRO!", canvas.width / 2, canvas.height / 2 - 20); ctx.fillStyle = "#fff"; ctx.font = "18px 'Courier New'"; ctx.fillText("Chetito usó sus fuegos, derrotó amenazas y salvó los panecillos.", canvas.width / 2, canvas.height / 2 + 20);
-            }
         }
-        update();
-    </script>
+        if (mode!=='playing') {
+            ctx.fillStyle='rgba(8,8,25,.82)'; ctx.fillRect(0,0,W,H); ctx.textAlign='center';
+            let title='', detail='';
+            if (mode==='paused') { title='PAUSA'; detail='Pulsa P o Esc para continuar'; }
+            if (mode==='gameover') { title='FIN DE LA PARTIDA'; detail='Pulsa Enter o Espacio para volver a empezar'; }
+            if (mode==='levelcomplete') {
+                title=levelIndex===levels.length-1?'¡JUEGO COMPLETADO!':'¡NIVEL COMPLETADO!';
+                detail=levelIndex===levels.length-1?'¡Chetito ha superado todos los niveles! Pulsa Enter para jugar otra vez':'Pulsa Enter para ir al siguiente nivel';
+            }
+            ctx.fillStyle='#ff8500'; ctx.font='bold 34px Courier New'; ctx.fillText(title,W/2,H/2-18);
+            ctx.fillStyle='#fff'; ctx.font='16px Courier New'; ctx.fillText(detail,W/2,H/2+22);
+        }
+    }
+    function frame() { update(); draw(); requestAnimationFrame(frame); }
+    loadLevel(0); frame();
+})();
+</script>
 </body>
 </html>
